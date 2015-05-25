@@ -27,7 +27,8 @@ class AngellistAlumniBot:
 
 		self.locationTagIdMap = {
 			'NYC':1664,
-			'SV':1681
+			'SV':1681,
+
 		} #maps a city string to angellist id for that location
 
 
@@ -43,7 +44,8 @@ class AngellistAlumniBot:
 		count = 0
 		perPage = 50
 		stop = False
-		while not stop:
+		#while not stop
+		while count < 1:
 			print 'getting page %s of startups...' % (pageCount)
 
 			#get most popular startups first
@@ -83,15 +85,53 @@ class AngellistAlumniBot:
 		
 		
 		return startupUrls, startupNames
+	
+	def _parseOutEmployeeURLS(self, data):
+		# '<a href="https://angel.co/briansin" class="profile-link" data-id="737" data-type="User">Brian Singerman</a>'
+		urlMatch = re.search(r'https://angel.co/[\w\d]*', data)
+		if hasattr(urlMatch, 'group'):
+			return urlMatch.group()
+		else:
+			return None;
+
+	def _scrapeEmployeePage(self, employeeURL):
+		print('temp')
 		
+
+	def _scrapeStartupPageForEmployees(self, startupURL):
+		employeeList = []
+		employeeURLS = []
+		try:
+			response = urllib2.urlopen(startupURL)
+			page_source = response.read()
+		except:
+			#in case startup page on angellist doesnt exist for some reason
+		  return None
+		lines = page_source.split('\n')
+		employeesSection = ''
+
+		for lineCount in range(0, len(lines)):
+			line = lines[lineCount]
+			if 'profile-link' in line:
+				employeeList.append(lines[lineCount])
+
+		for employeeData in employeeList:
+			employeeURLS.append(self._parseOutEmployeeURLS(employeeData))
+    
+    #filter out bad names
+		return filter(None, employeeURLS) 
+
+
 	def _scrapeStartupPageForFounder(self, startupUrl):
 		try:
 			response = urllib2.urlopen(startupUrl)
 			page_source = response.read()
+			print('page source',page_source)
 		except:
 			#for some reaosn, if the startup's page on angellist doesn't exist or something
 			return None
 		lines = page_source.split('\n')
+		print('lines!', lines)
 		founderLine = ''
 		#hacky: use regex to scrape founder's name
 		for lineCount in range(0,len(lines)):
@@ -116,46 +156,53 @@ class AngellistAlumniBot:
 			return None
 
 
-	def _getFounders(self, startupUrls, startupNames):
+	def _getEmployees(self, startupUrls, startupNames):
 		startupUrlAndNames = zip(startupUrls, startupNames)
+		allEmployees = [] #Array list of all employees
+		employeesAndStartups = {} #Object of startup and their employee list
 
-		foundersAndStartups = {}
 		print 'scraping founder names from AngelList startup pages...'
 		pbar = ProgressBar(maxval=len(startupUrls))
 		pbar.start()
 		#get startup page
 		count = 0
 		for startupUrl, startupName in startupUrlAndNames:
-			#scrape founder pages from startup page
-			founderName = self._scrapeStartupPageForFounder(startupUrl)
-			if founderName:
-				foundersAndStartups[founderName] = startupName
-			count+=1
+			#scrape employee names from startupPage
+			employeeNames = self._scrapeStartupPageForEmployees(startupUrl)
+
+			#append to master list of employees
+			allEmployees.append(employeeNames)
+
+				employeesAndStartups[startupName] = employeeNames
+			  count+=1
 			pbar.update(count)
 		
 		pbar.finish()
 
 
-		#for each founder name, search, grab id
-		print 'getting AngelList founder page for each founder...'
-		pbar = ProgressBar(maxval=len(foundersAndStartups.keys()))
+		# for each employee name, search, grab id
+		print 'getting AngelList page for each employee...'
+		pbar = ProgressBar(maxval=len(employeesAndStartups.keys()))
 		pbar.start()
 		count = 0
-		foundersAndPages = {}
-		for founderName in foundersAndStartups.keys():
-			founderPage = self._getFounderPageFromName(founderName)
+		employeesAndPages = {}
+		for employeeList in employeesAndStartups.keys():
+			for employeeURL in employeeList:
+
+			employeePage = self._getEmployeePageFromName(employeeURL)
 			count+=1
-			pbar.update(count)
+		# 	pbar.update(count)
 
-			if not founderPage == None:
-				foundersAndPages[founderName] = founderPage
+		# 	if not founderPage == None:
+		# 		foundersAndPages[founderName] = founderPage
 
-			else:
-				continue
+		# 	else:
+		# 		continue
 
-		pbar.finish()
+		# pbar.finish()
+		return allEmployees, 
 
-		return foundersAndPages, foundersAndStartups 
+		# return foundersAndPages, foundersAndStartups 
 
 
 	def _scrapePageForCollegeTag(self, founderPage):
@@ -177,35 +224,35 @@ class AngellistAlumniBot:
 				except:
 					return None
 	
-	def _isPennAlumni(self, inputText):
+	def _isHRAlumni(self, inputText):
 		inputText = inputText.lower()
-		if 'penn' in inputText and 'penn state' not in inputText:
+		if 'Hack Reactor' in inputText or 'Hack' in inputText or 'Reactor' in inputText
 			return True
 		else:
 			return False
 
 	def _isAlumni(self, inputText, school):
 		#checks if given input text tells us if is alumni of school
-		if school=='Penn':
-			return self._isPennAlumni(inputText)
+		if school=='Hack Reactor':
+			return self._isHRAlumni(inputText)
 		else:
 			raise Exception('alumni checking method for school %s not implemented yet' % school)
 
 
-	def _checkCollegeTag(self, school, founderPage):
+	def _checkCollegeTag(self, school, employeePage):
 		#scrape founder page for college tag, compare
-		college = self._scrapePageForCollegeTag(founderPage)
+		education = self._scrapePageForCollegeTag(employeePage)
 		#if we found a college tag
 		if college:
-			isAlumni = self._isAlumni(college, school)
+			isAlumni = self._isAlumni(education, school)
 			return isAlumni
 		else:
 			return None
 	
-	def _getLinkedInUrl(self, founderPage):
+	def _getLinkedInUrl(self, employeePage):
 		#get linked in page from angellist founder page
 		try:
-			response = urllib2.urlopen(founderPage)
+			response = urllib2.urlopen(employeePage)
 			page_source = response.read()
 		except:
 			#for some reason, if the person's angellist page doesn't exist
@@ -226,9 +273,9 @@ class AngellistAlumniBot:
 		
 		return None
 
-	def _checkLinkedinAlmaMater(self, school, founderPage):
+	def _checkLinkedinAlmaMater(self, school, employeePage):
 		#first, get linked in from founder page, if there is one
-		linkedInUrl = self._getLinkedInUrl(founderPage)
+		linkedInUrl = self._getLinkedInUrl(employeePage)
 
 		if linkedInUrl==None:
 			return False
@@ -273,15 +320,15 @@ class AngellistAlumniBot:
 				#education section didn't exist on linkedin page
 				return False
 
-	def _getIsAlumniFromPage(self, school, foundersAndPages):
+	def _getIsAlumniFromPage(self, school, employeesAndPages):
 		print 'checking if each founder graduated from %s...' % (school)
-		pbar = ProgressBar(maxval=len(foundersAndPages))
+		pbar = ProgressBar(maxval=len(employeesAndPages))
 		pbar.start()
 		count = 0
 
 		founderIsAlumni = {}
-		for founder in foundersAndPages:
-			founderPage = foundersAndPages[founder]
+		for founder in employeesAndPages:
+			founderPage = employeesAndPages[founder]
 			#check if college tag matches
 			isAlmaMaterAngellist = self._checkCollegeTag(school, founderPage)
 			
@@ -300,26 +347,27 @@ class AngellistAlumniBot:
 		
 		return founderIsAlumni
 
-	def findFounderAlumni(self, city='NYC', school='Penn', topPct = 0.10, followMin = None):
+	def findAlumniEmployees(self, city='SV', school='Hack Reactor', topPct = 0.10, followMin = None):
 		#get all startups in city
 		startupUrls, startupNames = self._findStartups(city, topPct, followMin)
 
-		#get founders of each startup
-		foundersAndPages, foundersAndStartups = self._getFounders(startupUrls, startupNames)
+		#get overall employee list and list for each startup of each startup
+		allEmployees, startupEmployees = self._getEmployees(startupUrls, startupNames)
 
 		#for each founder, find out if belong to input school: first angellist tag, then linkedin
 		isAlumni = self._getIsAlumniFromPage(school, foundersAndPages)
 
-		resultDict = {}
-		for founder in isAlumni:
-			newrow = {}
-			newrow['startup'] = foundersAndStartups[founder]
-			newrow['isAlumni'] = isAlumni[founder]
-			resultDict[founder] = newrow
+		# resultDict = {}
+		# for founder in isAlumni:
+		# 	newrow = {}
+		# 	newrow['startup'] = foundersAndStartups[founder]
+		# 	newrow['isAlumni'] = isAlumni[founder]
+		# 	resultDict[founder] = newrow
 
-		resultDf = DataFrame(resultDict).T
+		# resultDf = DataFrame(resultDict).T
 
-		return resultDf
+		# return resultDf
+		return test
 
 		
 	
